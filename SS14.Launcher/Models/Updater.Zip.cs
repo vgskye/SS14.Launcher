@@ -176,6 +176,8 @@ public sealed partial class Updater
         Log.Debug("Compression report: {ElapsedMs} ms elapsed, {TotalSize} B total size", sw.ElapsedMilliseconds,
             totalSize);
         Log.Debug("New files: {NewFilesCount}", newFileCount);
+        
+        con.Flush(new FlushOptions().SetWaitForFlush(true));
 
         return manifestHash;
     }

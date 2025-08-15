@@ -16,6 +16,7 @@ using Dapper;
 using Microsoft.Data.Sqlite;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
+using RocksDbSharp;
 using Serilog;
 using Splat;
 using SS14.Launcher.Models.ContentManagement;
@@ -414,6 +415,7 @@ public sealed partial class Updater : ReactiveObject
                     rows++;
                 }
             }
+            rocks.Flush(new FlushOptions().SetWaitForFlush(true));
             Log.Debug("Culled {RowsCulled} orphaned content blobs", rows);
         }
     }

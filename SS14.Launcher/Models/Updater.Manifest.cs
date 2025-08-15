@@ -75,6 +75,8 @@ public sealed partial class Updater
 
         ManifestFillContentManifest(con, fetchedManifest);
 
+        con.Flush(new FlushOptions().SetWaitForFlush(true));
+
         return fetchedManifest.ManifestHash;
     }
 
