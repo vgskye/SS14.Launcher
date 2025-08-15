@@ -66,9 +66,15 @@ internal class Program
         var redialApi = launcher != null ? new RedialApi(launcher) : null;
         var contentDb = Environment.GetEnvironmentVariable("SS14_LOADER_CONTENT_DB");
         var contentVersion = Environment.GetEnvironmentVariable("SS14_LOADER_CONTENT_VERSION");
-        ContentDbFileApi? contentApi = null;
+        var contentDataDb = Environment.GetEnvironmentVariable("SS14_LOADER_CONTENT_DATA_DB");
+        var contentManifestHash = Environment.GetEnvironmentVariable("SS14_LOADER_CONTENT_MANIFEST_HASH");
+        IDisposableFileApi? contentApi = null;
         IEnumerable<ApiMount>? extraMounts = null;
-        if (!string.IsNullOrEmpty(contentDb) && !string.IsNullOrEmpty(contentVersion))
+        if (!string.IsNullOrEmpty(contentDataDb) && !string.IsNullOrEmpty(contentManifestHash))
+        {
+            contentApi = new RocksFileApi(contentDataDb, Convert.FromHexString(contentManifestHash));
+            extraMounts = new[] { new ApiMount(contentApi, "/") };
+        } else if (!string.IsNullOrEmpty(contentDb) && !string.IsNullOrEmpty(contentVersion))
         {
             contentApi = new ContentDbFileApi(contentDb, long.Parse(contentVersion));
             extraMounts = new[] { new ApiMount(contentApi, "/") };

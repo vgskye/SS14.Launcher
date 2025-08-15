@@ -191,6 +191,8 @@ public sealed partial class Updater : ReactiveObject
 
                 Log.Debug("Did not already have this content bundle, ingesting as new version {Version}", versionId);
 
+                FetchedContentManifestData? baseBuildManifest = null;
+
                 if (metadata.BaseBuild is { } baseBuildData)
                 {
                     Log.Debug("Content bundle has base build info, downloading...");
@@ -217,26 +219,26 @@ public sealed partial class Updater : ReactiveObject
                     );
 
                     // Copy base build manifest into new version
-                    con.Execute(
-                        @"INSERT INTO ContentManifest (VersionId, Path, ContentId)
-                        SELECT @NewVersion, Path, ContentId
-                        FROM ContentManifest
-                        WHERE VersionId = @OldVersion",
+                    var baseBuildManifestHash = con.ExecuteScalar<byte[]>(
+                        "SELECT Hash FROM ContentVersion WHERE Id = @Version",
                         new
                         {
-                            NewVersion = versionId,
-                            OldVersion = baseBuildId
+                            Version = baseBuildId
                         }
                     );
+                    baseBuildManifest = new FetchedContentManifestData
+                    {
+                        ManifestHash = baseBuildManifestHash,
+                        Entries = ParseContentManifest(ContentManager.OpenBlob(baseBuildManifestHash))
+                    };
                 }
 
                 Status = UpdateStatus.LoadingIntoDb;
 
                 Log.Debug("Ingesting zip file...");
-                ZipIngest(con, versionId, archive, true, cancel);
 
                 // Insert real manifest hash into the database.
-                var manifestHash = GenerateContentManifestHash(con, versionId);
+                var manifestHash = ZipIngest(archive, baseBuildManifest, cancel);
                 con.Execute("UPDATE ContentVersion SET Hash = @Hash WHERE Id = @Version",
                     new { Hash = manifestHash, Version = versionId });
 
@@ -313,7 +315,12 @@ public sealed partial class Updater : ReactiveObject
         _cfg.CommitConfig();
 
         Log.Information("Update done!");
-        return new ContentLaunchInfo(versionRowId, modules);
+
+        var manifestHash = con.ExecuteScalar<byte[]>(
+            "SELECT Hash FROM ContentVersion WHERE Id = @Version",
+            new { Version = versionRowId });
+
+        return new ContentLaunchInfo(manifestHash, modules);
     }
 
 
@@ -374,17 +381,41 @@ public sealed partial class Updater : ReactiveObject
             anythingRemoved = true;
         }
 
+        tx.Commit();
+
         if (anythingRemoved)
         {
-            var rows = con.Execute("""
-                DELETE FROM Content
-                WHERE Id NOT IN (SELECT ContentId FROM ContentManifest)
-                    AND Id NOT IN (SELECT ContentId FROM InterruptedDownloadContent)
-                """);
+            using var rocks = ContentManager.GetRocksDbConnection();
+            var curVersions = con.Query<ContentVersion>("SELECT * FROM ContentVersion").ToArray();
+            var curInterrupted = con.Query<byte[]>("SELECT ContentId FROM InterruptedDownloadContent");
+            var toKeep = new HashSet<byte[]>();
+            foreach (var version in curVersions)
+            {
+                var manifest = rocks.Get(version.Hash);
+                toKeep.Add(manifest);
+                var entries = ParseContentManifest(manifest);
+                foreach (var entry in entries)
+                {
+                    toKeep.Add(entry.Hash);
+                }
+            }
+            foreach (var interrupted in curInterrupted)
+            {
+                toKeep.Add(interrupted);
+            }
+
+            var rows = 0;
+            var iterator = rocks.NewIterator();
+            for (iterator.SeekToFirst(); iterator.Valid(); iterator.Next())
+            {
+                if (!toKeep.Contains(iterator.Key()))
+                {
+                    rocks.Remove(iterator.Key());
+                    rows++;
+                }
+            }
             Log.Debug("Culled {RowsCulled} orphaned content blobs", rows);
         }
-
-        tx.Commit();
     }
 
     private static ContentVersion? CheckExisting(SqliteConnection con, ServerBuildInformation buildInfo)
@@ -588,18 +619,6 @@ public sealed partial class Updater : ReactiveObject
                     existingVersion.ZipHash
                 });
 
-            // Copy entire manifest over.
-            con.Execute(@"
-                    INSERT INTO ContentManifest (VersionId, Path, ContentId)
-                    SELECT @NewVersion, Path, ContentId
-                    FROM ContentManifest
-                    WHERE VersionId = @OldVersion",
-                new
-                {
-                    NewVersion = versionId,
-                    OldVersion = existingVersion.Id
-                });
-
             if (changedEngineVersion)
             {
                 con.Execute(@"
@@ -704,7 +723,7 @@ public sealed partial class Updater : ReactiveObject
             && !string.IsNullOrEmpty(buildInfo.ManifestDownloadUrl)
             && !string.IsNullOrEmpty(buildInfo.ManifestHash))
         {
-            manifestHash = await ManifestDownloadNewVersion(buildInfo, con, versionId, state, cancel);
+            manifestHash = await ManifestDownloadNewVersion(buildInfo, state, cancel);
         }
         else if (buildInfo.DownloadUrl != null)
         {
@@ -784,42 +803,20 @@ public sealed partial class Updater : ReactiveObject
         buf = new byte[newLen];
     }
 
-    private static byte[] GenerateContentManifestHash(SqliteConnection con, long versionId)
+    private static byte[] GenerateContentManifest(List<ContentManifestEntry> manifestData)
     {
-        var manifestQuery = con.Query<(string, byte[])>(
-            @"SELECT
-                Path, Hash
-            FROM
-                ContentManifest
-            INNER JOIN
-                Content
-            ON
-                Content.Id = ContentManifest.ContentId
-            WHERE
-                ContentManifest.VersionId = @VersionId
-            ORDER BY
-                Path
-            ",
-            new
-            {
-                VersionId = versionId
-            }
-        );
-
         var manifestStream = new MemoryStream();
         var manifestWriter = new StreamWriter(manifestStream, new UTF8Encoding(false));
         manifestWriter.Write("Robust Content Manifest 1\n");
 
-        foreach (var (path, hash) in manifestQuery)
+        foreach (var entry in manifestData)
         {
-            manifestWriter.Write($"{Convert.ToHexString(hash)} {path}\n");
+            manifestWriter.Write($"{Convert.ToHexString(entry.Hash)} {entry.Path}\n");
         }
 
         manifestWriter.Flush();
 
-        manifestStream.Seek(0, SeekOrigin.Begin);
-
-        return Blake2B.HashStream(manifestStream, 32);
+        return manifestStream.ToArray();
     }
 
     private async Task CullEngineVersionsMaybe(SqliteConnection contentConnection)
@@ -849,10 +846,18 @@ public sealed partial class Updater : ReactiveObject
 
     public static ResourceManifestData? LoadManifestData(SqliteConnection contentConnection, long versionId)
     {
-        if (ContentManager.OpenBlob(contentConnection, versionId, "manifest.yml") is not { } resourceManifest)
+        var manifestHash = contentConnection.ExecuteScalar<byte[]>(
+            "SELECT Hash FROM ContentVersion WHERE Id = @Version",
+            new { Version = versionId });
+
+        if (manifestHash == null)
             return null;
 
-        using var streamReader = new StreamReader(resourceManifest);
+        if (ContentManager.OpenBlob(manifestHash, "manifest.yml") is not { } resourceManifest)
+            return null;
+
+        using var stream = new MemoryStream(resourceManifest);
+        using var streamReader = new StreamReader(stream);
         var manifestData = ResourceManifestDeserializer.Deserialize<ResourceManifestData?>(streamReader);
         return manifestData;
     }
@@ -900,7 +905,7 @@ public sealed partial class Updater : ReactiveObject
 
     private sealed class TransactedDownloadState
     {
-        public readonly List<long> DownloadedContentEntries = [];
+        public readonly List<byte[]> DownloadedContentEntries = [];
         public long? MadeContentVersion;
     }
 }

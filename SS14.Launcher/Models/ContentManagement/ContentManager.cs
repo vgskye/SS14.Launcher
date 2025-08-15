@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Data.Sqlite;
+using RocksDbSharp;
 using Serilog;
 using SS14.Launcher.Models.Data;
 using SS14.Launcher.Utility;
@@ -61,36 +62,48 @@ public sealed class ContentManager
     /// Open a blob in a manifest version for reading.
     /// </summary>
     /// <returns>null if the file does not exist.</returns>
-    public static Stream? OpenBlob(SqliteConnection con, long versionId, string fileName)
+    public static byte[]? OpenBlob(byte[] manifestHash, string fileName)
     {
-        var (manifestRowId, manifestCompression) = con.QueryFirstOrDefault<(long id, ContentCompressionScheme compression)>(
-            @"SELECT c.ROWID, c.Compression FROM ContentManifest cm, Content c
-            WHERE Path = @FileName AND VersionId = @Version AND c.Id = cm.ContentId",
-            new
-            {
-                Version = versionId,
-                FileName = fileName
-            });
+        var tableOptions = new BlockBasedTableOptions()
+            .SetBlockSize(16 * 1024)
+            .SetCacheIndexAndFilterBlocks(true)
+            .SetPinL0FilterAndIndexBlocksInCache(true)
+            .SetFormatVersion(6)
+            .SetBlockCache(Cache.CreateLru(128 << 20))
+            .SetFilterPolicy(BloomFilterPolicy.Create(10, false));
+        var options = new DbOptions()
+            .SetCreateIfMissing(true)
+            .SetLevelCompactionDynamicLevelBytes(true)
+            .SetBytesPerSync(1048576)
+            .SetBlockBasedTableFactory(tableOptions)
+            .SetCompression(Compression.Zstd);
+        using var con = RocksDb.OpenReadOnly(options, LauncherPaths.PathContentDataDb, false);
+        var manifest = Updater.ParseContentManifest(con.Get(manifestHash));
+        var blob = con.Get(manifest?.Find(entry => entry.Path == fileName).Hash);
+        return blob;
+    }
 
-        if (manifestRowId == 0)
-            return null;
-
-        var blob = new SqliteBlob(con, "Content", "Data", manifestRowId, readOnly: true);
-
-        switch (manifestCompression)
-        {
-            case ContentCompressionScheme.None:
-                return blob;
-
-            case ContentCompressionScheme.Deflate:
-                return new DeflateStream(blob, CompressionMode.Decompress);
-
-            case ContentCompressionScheme.ZStd:
-                return new ZStdDecompressStream(blob);
-
-            default:
-                throw new InvalidDataException("Unknown compression scheme in ContentDB!");
-        }
+    /// <summary>
+    /// Open a blob in the RocksDB database by hash.
+    /// </summary>
+    /// <returns>null if the file does not exist.</returns>
+    public static byte[]? OpenBlob(byte[] hash)
+    {
+        var tableOptions = new BlockBasedTableOptions()
+            .SetBlockSize(16 * 1024)
+            .SetCacheIndexAndFilterBlocks(true)
+            .SetPinL0FilterAndIndexBlocksInCache(true)
+            .SetFormatVersion(6)
+            .SetBlockCache(Cache.CreateLru(128 << 20))
+            .SetFilterPolicy(BloomFilterPolicy.Create(10, false));
+        var options = new DbOptions()
+            .SetCreateIfMissing(true)
+            .SetLevelCompactionDynamicLevelBytes(true)
+            .SetBytesPerSync(1048576)
+            .SetBlockBasedTableFactory(tableOptions)
+            .SetCompression(Compression.Zstd);
+        using var con = RocksDb.OpenReadOnly(options, LauncherPaths.PathContentDataDb, false);
+        return con.Get(hash);
     }
 
     public static SqliteConnection GetSqliteConnection()
@@ -98,6 +111,24 @@ public sealed class ContentManager
         var con = new SqliteConnection(GetContentDbConnectionString());
         con.Open();
         return con;
+    }
+
+    public static RocksDb GetRocksDbConnection()
+    {
+        var tableOptions = new BlockBasedTableOptions()
+            .SetBlockSize(16 * 1024)
+            .SetCacheIndexAndFilterBlocks(true)
+            .SetPinL0FilterAndIndexBlocksInCache(true)
+            .SetFormatVersion(6)
+            .SetBlockCache(Cache.CreateLru(128 << 20))
+            .SetFilterPolicy(BloomFilterPolicy.Create(10, false));
+        var options = new DbOptions()
+            .SetCreateIfMissing(true)
+            .SetLevelCompactionDynamicLevelBytes(true)
+            .SetBytesPerSync(1048576)
+            .SetBlockBasedTableFactory(tableOptions)
+            .SetCompression(Compression.Zstd);
+        return RocksDb.Open(options, LauncherPaths.PathContentDataDb);
     }
 
     private static string GetContentDbConnectionString()
@@ -111,6 +142,6 @@ public sealed class ContentManager
         //
         // (also it means that hitting the "clear server content" button in settings IMMEDIATELY truncates the DB file
         // instead of waiting for the launcher to exit, at least if the client isn't running so it can checkpoint)
-        return $"Data Source={LauncherPaths.PathContentDb};Mode=ReadWriteCreate;Pooling=False;Foreign Keys=True";
+        return $"Data Source={LauncherPaths.PathContentMetaDb};Mode=ReadWriteCreate;Pooling=False;Foreign Keys=True";
     }
 }

@@ -525,8 +525,8 @@ public class Connector : ReactiveObject
             startInfo.EnvironmentVariables[k] = v;
         }
 
-        EnvVar("SS14_LOADER_CONTENT_DB", LauncherPaths.PathContentDb);
-        EnvVar("SS14_LOADER_CONTENT_VERSION", launchInfo.Version.ToString());
+        EnvVar("SS14_LOADER_CONTENT_DATA_DB", LauncherPaths.PathContentDataDb);
+        EnvVar("SS14_LOADER_CONTENT_MANIFEST_HASH", Convert.ToHexString(launchInfo.ManifestHash));
 
         // Env vars for engine modules.
         {

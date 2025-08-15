@@ -17,7 +17,7 @@ using static SharpZstd.Interop.Zstd;
 
 namespace SS14.Loader;
 
-internal sealed class ContentDbFileApi : IFileApi, IDisposable
+internal sealed class ContentDbFileApi : IDisposableFileApi
 {
     private readonly Dictionary<string, (long id, int length, ContentCompressionScheme compr)> _files = new();
     private readonly SemaphoreSlim _dbConnectionsSemaphore;

@@ -1,14 +1,17 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Data.Sqlite;
+using RocksDbSharp;
 using Serilog;
-using SharpZstd.Interop;
+using SpaceWizards.Sodium;
 using SS14.Launcher.Models.ContentManagement;
 using SS14.Launcher.Utility;
 
@@ -46,9 +49,7 @@ public sealed partial class Updater
 
         var zip = new ZipArchive(tempFile, ZipArchiveMode.Read, leaveOpen: true);
 
-        ZipIngest(con, versionId, zip, false, cancel);
-
-        return GenerateContentManifestHash(con, versionId);
+        return ZipIngest(zip, null, cancel);
     }
 
     /// <summary>
@@ -96,139 +97,86 @@ public sealed partial class Updater
         return hash;
     }
 
-    private void ZipIngest(
-        SqliteConnection con,
-        long versionId,
+    private byte[] ZipIngest(
         ZipArchive zip,
-        bool underlay,
+        FetchedContentManifestData? underlay,
         CancellationToken cancel)
     {
+        using var con = ContentManager.GetRocksDbConnection();
         var totalSize = 0L;
         var sw = new Stopwatch();
 
         var newFileCount = 0;
 
-        SqliteBlobStream? blob = null;
-        try
-        {
-            // Re-use compression buffer and compressor for all files, creating/freeing them is expensive.
-            var compressBuffer = new MemoryStream();
-            using var zStdCompressor = new ZStdCompressStream(compressBuffer);
+        var underlayEntries = underlay?.Entries.Select(entry => entry.Path).ToHashSet();
 
-            var count = 0;
-            foreach (var entry in zip.Entries)
+        // Re-use compression buffer and compressor for all files, creating/freeing them is expensive.
+        var readBuffer = new MemoryStream();
+
+        var entries = new List<ContentManifestEntry>();
+
+        if (underlay != null)
+        {
+            entries.AddRange(underlay.Entries);
+        }
+
+        var count = 0;
+        foreach (var entry in zip.Entries)
+        {
+            cancel.ThrowIfCancellationRequested();
+
+            if (count++ % 100 == 0)
+                Progress = (count++, zip.Entries.Count, ProgressUnit.None);
+
+            // Ignore directory entries.
+            if (entry.Name == "")
+                continue;
+
+            if (underlayEntries != null)
             {
-                cancel.ThrowIfCancellationRequested();
-
-                if (count++ % 100 == 0)
-                    Progress = (count++, zip.Entries.Count, ProgressUnit.None);
-
-                // Ignore directory entries.
-                if (entry.Name == "")
+                if (underlayEntries.Contains(entry.FullName))
                     continue;
-
-                if (underlay)
-                {
-                    // Ignore files from the zip file we already have.
-                    var exists = con.ExecuteScalar<bool>(
-                        @"SELECT COUNT(*) FROM ContentManifest
-                        WHERE Path = @Path AND VersionId = @VersionId",
-                        new
-                        {
-                            Path = entry.FullName,
-                            VersionId = versionId
-                        }
-                    );
-
-                    if (exists)
-                        continue;
-                }
-
-                // Log.Verbose("Storing file {EntryName}", entry.FullName);
-
-                byte[] hash;
-                using (var stream = entry.Open())
-                {
-                    hash = Blake2B.HashStream(stream, 32);
-                }
-
-                var row = con.QueryFirstOrDefault<long>(
-                    "SELECT Id FROM Content WHERE Hash = @Hash",
-                    new { Hash = hash });
-                if (row == 0)
-                {
-                    newFileCount += 1;
-
-                    // Don't have this content blob yet, insert it into the database.
-                    using var entryStream = entry.Open();
-
-                    var compress = entry.Length - entry.CompressedLength > 10;
-                    if (compress)
-                    {
-                        sw.Start();
-                        entryStream.CopyTo(zStdCompressor, (int)Zstd.ZSTD_CStreamInSize());
-                        // Flush to end fragment (i.e. file)
-                        zStdCompressor.FlushEnd();
-                        sw.Stop();
-
-                        totalSize += compressBuffer.Length;
-
-                        row = con.ExecuteScalar<long>(
-                            @"INSERT INTO Content(Hash, Size, Compression, Data)
-                        VALUES (@Hash, @Size, @Compression, zeroblob(@BlobLen))
-                        RETURNING Id",
-                            new
-                            {
-                                Hash = hash,
-                                Size = entry.Length,
-                                BlobLen = compressBuffer.Length,
-                                Compression = ContentCompressionScheme.ZStd
-                            });
-
-                        if (blob == null)
-                            blob = SqliteBlobStream.Open(con.Handle!, "main", "Content", "Data", row, true);
-                        else
-                            blob.Reopen(row);
-
-                        // Write memory buffer to SQLite and reset it.
-                        blob.Write(compressBuffer.GetBuffer().AsSpan(0, (int)compressBuffer.Length));
-                        compressBuffer.Position = 0;
-                        compressBuffer.SetLength(0);
-                    }
-                    else
-                    {
-                        row = con.ExecuteScalar<long>(
-                            @"INSERT INTO Content(Hash, Size, Compression, Data)
-                            VALUES (@Hash, @Size, @Compression, zeroblob(@Size))
-                            RETURNING Id",
-                            new { Hash = hash, Size = entry.Length, Compression = ContentCompressionScheme.None });
-
-                        if (blob == null)
-                            blob = SqliteBlobStream.Open(con.Handle!, "main", "Content", "Data", row, true);
-                        else
-                            blob.Reopen(row);
-
-                        entryStream.CopyTo(blob);
-                    }
-                }
-
-                con.Execute(
-                    "INSERT INTO ContentManifest(VersionId, Path, ContentId) VALUES (@VersionId, @Path, @ContentId)",
-                    new
-                    {
-                        VersionId = versionId,
-                        Path = entry.FullName,
-                        ContentId = row,
-                    });
             }
+
+            // Log.Verbose("Storing file {EntryName}", entry.FullName);
+
+            byte[] hash;
+            using (var stream = entry.Open())
+            {
+                hash = Blake2B.HashStream(stream, 32);
+            }
+
+            if (!con.HasKey(hash))
+            {
+                newFileCount += 1;
+
+                // Don't have this content blob yet, insert it into the database.
+                using var entryStream = entry.Open();
+
+                entryStream.CopyTo(readBuffer);
+
+                con.Put(hash, readBuffer.GetBuffer().AsSpan(0, (int)readBuffer.Length));
+
+                readBuffer.Position = 0;
+                readBuffer.SetLength(0);
+            }
+
+            entries.Add(new ContentManifestEntry
+            {
+                Hash = hash, Path = entry.FullName
+            });
         }
-        finally
-        {
-            blob?.Dispose();
-        }
+
+        var manifest = GenerateContentManifest(entries);
+        var manifestHash = new byte[256 / 8];
+        CryptoGenericHashBlake2B.Hash(manifestHash, manifest, ReadOnlySpan<byte>.Empty);
+
+        con.Put(manifestHash, manifest);
 
         Log.Debug("Compression report: {ElapsedMs} ms elapsed, {TotalSize} B total size", sw.ElapsedMilliseconds,
             totalSize);
         Log.Debug("New files: {NewFilesCount}", newFileCount);
+
+        return manifestHash;
     }
 }

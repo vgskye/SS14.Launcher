@@ -18,44 +18,6 @@ CREATE TABLE ContentVersion(
     -- Used engine version is stored in "ContentEngineDependency" table as 'Robust' module.
 );
 
--- Stores the actual content of game files.
-CREATE TABLE Content(
-    -- Autoincrement to avoid use-after-free type stuff if somebody clears the DB while the game is running.
-    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-    -- BLAKE2B hash of the (uncompressed) data stored in this file.
-    -- Unique constraint to not allow duplicate blobs in the database.
-    -- Also should be backed by an index allowing us to efficiently look up existing blobs when writing.
-    Hash BLOB NOT NULL UNIQUE,
-    -- Uncompressed size of the data stored in this file.
-    Size INTEGER NOT NULL,
-    -- Compression scheme used to store this file.
-    -- See ContentCompressionScheme enum for values.
-    Compression INTEGER NOT NULL,
-    -- Actual data for the file. May be compressed based on "Compression".
-    Data BLOB NOT NULL,
-    -- Simple check: if a file is uncompressed, "Size" MUST match "Data" length.
-    CONSTRAINT UncompressedSameSize CHECK(Compression != 0 OR length(Data) = Size)
-);
-
--- Stores the actual file list for each server version.
-CREATE TABLE ContentManifest(
-    Id INTEGER PRIMARY KEY,
-    -- Reference to ContentVersion to see which server version this belongs to.
-    VersionId INTEGER NOT NULL REFERENCES ContentVersion(Id) ON DELETE CASCADE,
-    -- File path of the game file in question.
-    Path TEXT NOT NULL,
-    -- Reference to the actual content blob.
-    -- Do not allow a file to be deleted
-    ContentId INTEGER NOT NULL REFERENCES Content(Id) ON DELETE RESTRICT,
-
-    -- Make sure that we aren't writing directory entries from the zip into this.
-    -- Just something I had happen in development, it only wastes DB space.
-    CONSTRAINT NotDirectory CHECK (Path NOT LIKE '%/')
-);
-
--- Can't have a duplicate path entry for a single version.
-CREATE UNIQUE INDEX ContentManifestUniqueIndex ON ContentManifest(VersionId, Path);
-
 -- Engine dependencies needed by a specified ContentVersion.
 -- This includes both the base engine version (stored as the Robust module).
 -- And any extra modules such as Robust.Client.WebView.
@@ -75,3 +37,24 @@ CREATE TABLE ContentEngineDependency(
 
 -- Cannot have multiple versions of the same module for a single installed version.
 CREATE UNIQUE INDEX ContentEngineModuleUniqueIndex ON ContentEngineDependency(VersionId, ModuleName);
+
+-- Represents a content download that was interrupted.
+-- Used to reference the content blobs that were successfully downloaded,
+-- so that they are not immediately garbage collected.
+CREATE TABLE InterruptedDownload(
+                                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- Date the download was interrupted at.
+    -- Used to eventually remove this from the database if unused.
+                                    Added DATE NOT NULL
+);
+
+-- A single content blob of which the download was interrupted.
+CREATE TABLE InterruptedDownloadContent(
+                                           Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- The ID of the interrupted download row.
+                                           InterruptedDownloadId INTEGER NOT NULL REFERENCES InterruptedDownload(Id) ON DELETE CASCADE,
+    -- The ID of the content blob that was downloaded.
+    -- This value is unique: a new download shouldn't be re-downloading a blob if we already have it.
+    -- Also, we need the index for GC purposes.
+                                           ContentId BLOB NOT NULL UNIQUE
+)

@@ -10,10 +10,9 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Data.Sqlite;
+using RocksDbSharp;
 using Serilog;
 using SpaceWizards.Sodium;
-using SQLitePCL;
 using SS14.Launcher.Models.ContentManagement;
 using SS14.Launcher.Utility;
 
@@ -30,11 +29,10 @@ public sealed partial class Updater
     [SuppressMessage("ReSharper", "UseAwaitUsing")]
     private async Task<byte[]> ManifestDownloadNewVersion(
         ServerBuildInformation buildInfo,
-        SqliteConnection con,
-        long versionId,
         TransactedDownloadState state,
         CancellationToken cancel)
     {
+        using var con = ContentManager.GetRocksDbConnection();
         var swZstd = new Stopwatch();
         var swSqlite = new Stopwatch();
         var swBlake = new Stopwatch();
@@ -75,12 +73,7 @@ public sealed partial class Updater
             swSqlite.ElapsedMilliseconds,
             swBlake.ElapsedMilliseconds);
 
-        ManifestFillContentManifest(con, versionId, fetchedManifest);
-
-#if DEBUG
-        var testHash = GenerateContentManifestHash(con, versionId);
-        Debug.Assert(testHash.AsSpan().SequenceEqual(fetchedManifest.ManifestHash));
-#endif
+        ManifestFillContentManifest(con, fetchedManifest);
 
         return fetchedManifest.ManifestHash;
     }
@@ -141,20 +134,56 @@ public sealed partial class Updater
         };
     }
 
+    public static List<ContentManifestEntry>? ParseContentManifest(byte[] manifest)
+    {
+        using var stream = new MemoryStream(manifest);
+        using var sr = new StreamReader(stream);
+
+        if (sr.ReadLine() != "Robust Content Manifest 1")
+            return null;
+
+        Log.Debug("Parsing manifest...");
+
+        var entries = new List<ContentManifestEntry>();
+
+        while (sr.ReadLine() is { } manifestLine)
+        {
+            try
+            {
+                var sep = manifestLine.IndexOf(' ');
+                var hash = Convert.FromHexString(manifestLine.AsSpan(0, sep));
+                var filename = manifestLine.AsMemory(sep + 1);
+
+                entries.Add(new ContentManifestEntry
+                {
+                    Hash = hash,
+                    Path = filename.ToString(),
+                });
+            }
+            catch (FormatException e)
+            {
+                return null;
+            }
+            catch (ArgumentOutOfRangeException e)
+            {
+                return null;
+            }
+        }
+
+        Log.Debug("Total of {ManifestEntriesCount} manifest entries", entries.Count);
+
+        return entries;
+    }
+
     private static List<int> ManifestCalculateFilesToDownload(
         FetchedContentManifestData manifestData,
-        SqliteConnection con,
+        RocksDb con,
         Stopwatch swSqlite)
     {
-        Debug.Assert(con.Handle != null);
-        var db = con.Handle;
-
         swSqlite.Start();
 
         var toDownload = new List<int>();
         var queuedHashes = new HashSet<HashKey>();
-
-        using var stmtFindContentRow = db.Prepare("SELECT Id FROM Content WHERE Hash = ?");
 
         for (var i = 0; i < manifestData.Entries.Count; i++)
         {
@@ -164,12 +193,7 @@ public sealed partial class Updater
             if (queuedHashes.Contains(key))
                 continue;
 
-            stmtFindContentRow.BindBlob(db, 1, entry.Hash);
-            var stepResult = stmtFindContentRow.Step(db);
-
-            stmtFindContentRow.Reset(db);
-
-            if (stepResult == raw.SQLITE_DONE)
+            if (!con.HasKey(entry.Hash))
             {
                 // Does not exist in DB. We need to download it.
                 toDownload.Add(i);
@@ -185,7 +209,7 @@ public sealed partial class Updater
 
     private async Task ManifestDownloadMissingContent(
         ServerBuildInformation buildInfo,
-        SqliteConnection con,
+        RocksDb con,
         FetchedContentManifestData manifestData,
         List<int> toDownload,
         TransactedDownloadState state,
@@ -254,18 +278,8 @@ public sealed partial class Updater
         // <int32> compressed length
         var fileHeader = new byte[preCompressed ? 8 : 4];
 
-        var db = con.Handle;
-        Debug.Assert(db != null);
-
-        SqliteBlobStream? blob = null;
         try
         {
-            using var stmtInsertContent = db.Prepare("""
-                INSERT INTO Content (Hash, Size, Compression, Data)
-                VALUES (@Hash, @Size, @Compression, zeroblob(@DataSize))
-                RETURNING Id
-                """);
-
             // Buffer for storing compressed ZStd data.
             var compressBuffer = new byte[1024];
 
@@ -292,10 +306,6 @@ public sealed partial class Updater
                 EnsureBuffer(ref readBuffer, length);
                 var data = readBuffer.AsMemory(0, length);
 
-                // Data to write to database.
-                var compression = ContentCompressionScheme.None;
-                var writeData = data;
-
                 if (preCompressed)
                 {
                     // Compressed length from extended header.
@@ -318,10 +328,6 @@ public sealed partial class Updater
 
                         if (decompressedLength != data.Length)
                             throw new UpdateException($"Compressed blob {i} had incorrect decompressed size!");
-
-                        // Set variables so that the database write down below uses them.
-                        compression = ContentCompressionScheme.ZStd;
-                        writeData = compressedData;
                     }
                     else
                     {
@@ -349,55 +355,17 @@ public sealed partial class Updater
                 if (!manifestEntry.Hash.AsSpan().SequenceEqual(hash))
                     throw new UpdateException("Hash mismatch while downloading!");
 
-                if (!preCompressed)
-                {
-                    // File wasn't pre-compressed. We should try to manually compress it to save space in DB.
-
-                    swZstd.Start();
-
-                    EnsureBuffer(ref compressBuffer, ZStd.CompressBound(data.Length));
-                    var compressLength = compressContext!.Compress(compressBuffer, data.Span);
-
-                    swZstd.Stop();
-
-                    // Don't bother saving compressed data if it didn't save enough space.
-                    if (compressLength + CompressionSavingsThreshold < length)
-                    {
-                        // Set variables so that the database write down below uses them.
-                        compression = ContentCompressionScheme.ZStd;
-                        writeData = compressBuffer.AsMemory(0, compressLength);
-                    }
-                }
-
                 swSqlite.Start();
-
-                stmtInsertContent.BindBlob(db, 1, manifestEntry.Hash); // @Hash
-                stmtInsertContent.BindInt(db, 2, length); // @Size
-                stmtInsertContent.BindInt(db, 3, (int)compression); // @Compression
-                stmtInsertContent.BindInt(db, 4, writeData.Length); // @DataSize
-
-                stmtInsertContent.Step(db);
-
-                var rowId = raw.sqlite3_column_int64(stmtInsertContent, 0);
-
-                stmtInsertContent.Reset(db);
-
-                if (blob == null)
-                    blob = SqliteBlobStream.Open(con.Handle!, "main", "Content", "Data", rowId, true);
-                else
-                    blob.Reopen(rowId);
-
-                blob.Write(writeData.Span);
+                con.Put(manifestEntry.Hash, data.Span);
                 swSqlite.Stop();
 
-                state.DownloadedContentEntries.Add(rowId);
+                state.DownloadedContentEntries.Add(manifestEntry.Hash);
 
                 // Log.Debug("Data size: {DataSize}, Size: {UncompressedLen}", writeData.Length, uncompressedLen);
             }
         }
         finally
         {
-            blob?.Dispose();
             decompressContext?.Dispose();
             compressContext?.Dispose();
         }
@@ -439,38 +407,11 @@ public sealed partial class Updater
     }
 
     private static void ManifestFillContentManifest(
-        SqliteConnection connection,
-        long versionId,
+        RocksDb connection,
         FetchedContentManifestData manifestData)
     {
-        var db = connection.Handle;
-        Debug.Assert(db != null);
 
-        using var stmtFindContent = db.Prepare("SELECT Id FROM Content WHERE Hash = ?");
-        using var stmtInsertContentManifest =
-            db.Prepare("INSERT INTO ContentManifest (VersionId, Path, ContentId) VALUES (?, ?, ?)");
-
-        stmtInsertContentManifest.BindInt64(db, 1, versionId);
-
-        foreach (var entry in manifestData.Entries)
-        {
-            stmtFindContent.BindBlob(db, 1, entry.Hash);
-
-            var result = stmtFindContent.Step(db);
-            if (result == raw.SQLITE_DONE)
-            {
-                // Shouldn't be possible, we should have all blobs we need!
-                throw new UnreachableException("Missing content blob during manifest fill!");
-            }
-
-            var contentId = raw.sqlite3_column_int64(stmtFindContent, 0);
-            stmtFindContent.Reset(db);
-
-            stmtInsertContentManifest.BindString(db, 2, entry.Path);
-            stmtInsertContentManifest.BindInt64(db, 3, contentId);
-            stmtInsertContentManifest.Step(db);
-            stmtInsertContentManifest.Reset(db);
-        }
+        connection.Put(manifestData.ManifestHash, GenerateContentManifest(manifestData.Entries));
     }
 
     [Flags]
@@ -491,7 +432,7 @@ public sealed partial class Updater
         public required List<ContentManifestEntry> Entries;
     }
 
-    private struct ContentManifestEntry
+    public struct ContentManifestEntry
     {
         public required string Path;
         public required byte[] Hash;
