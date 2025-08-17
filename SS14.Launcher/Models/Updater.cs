@@ -393,7 +393,7 @@ public sealed partial class Updater : ReactiveObject
             foreach (var version in curVersions)
             {
                 var manifest = rocks.Get(version.Hash);
-                toKeep.Add(manifest);
+                toKeep.Add(version.Hash);
                 var entries = ParseContentManifest(manifest);
                 foreach (var entry in entries)
                 {
