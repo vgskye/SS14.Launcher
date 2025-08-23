@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Compression;
@@ -389,27 +390,27 @@ public sealed partial class Updater : ReactiveObject
             using var rocks = ContentManager.GetRocksDbConnection();
             var curVersions = con.Query<ContentVersion>("SELECT * FROM ContentVersion").ToArray();
             var curInterrupted = con.Query<byte[]>("SELECT ContentId FROM InterruptedDownloadContent");
-            var toKeep = new HashSet<byte[]>();
+            var toKeep = new HashSet<Hash256>();
             foreach (var version in curVersions)
             {
                 var manifest = rocks.Get(version.Hash);
-                toKeep.Add(version.Hash);
+                toKeep.Add(new Hash256(version.Hash));
                 var entries = ParseContentManifest(manifest);
                 foreach (var entry in entries)
                 {
-                    toKeep.Add(entry.Hash);
+                    toKeep.Add(new Hash256(entry.Hash));
                 }
             }
             foreach (var interrupted in curInterrupted)
             {
-                toKeep.Add(interrupted);
+                toKeep.Add(new Hash256(interrupted));
             }
 
             var rows = 0;
             var iterator = rocks.NewIterator();
             for (iterator.SeekToFirst(); iterator.Valid(); iterator.Next())
             {
-                if (!toKeep.Contains(iterator.Key()))
+                if (!toKeep.Contains(new Hash256(iterator.Key())))
                 {
                     rocks.Remove(iterator.Key());
                     rows++;
@@ -909,5 +910,51 @@ public sealed partial class Updater : ReactiveObject
     {
         public readonly List<byte[]> DownloadedContentEntries = [];
         public long? MadeContentVersion;
+    }
+
+    [System.Runtime.CompilerServices.InlineArray(32)]
+    private struct Hash256: IEquatable<Hash256>
+    {
+        private byte _element;
+
+        public Hash256(ReadOnlySpan<byte> hash)
+        {
+            Debug.Assert(hash.Length == 32);
+            hash.CopyTo(this);
+        }
+
+        public override bool Equals([NotNullWhen(true)] object? obj)
+        {
+            if (obj is Hash256 hash256)
+            {
+                return Equals(hash256);
+            }
+            return false;
+        }
+
+        public bool Equals(Hash256 obj)
+        {
+            return ((Span<byte>)this).SequenceEqual(obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return this[0] << 24 | this[1] << 16 | this[2] << 8 | this[3];
+        }
+
+        public static bool operator == (Hash256 a, object? b)
+        {
+            return Equals(a, b);
+        }
+
+        public static bool operator != (Hash256 a, object? b)
+        {
+            return !(a == b);
+        }
+
+        public override string ToString()
+        {
+            return Convert.ToHexString((Span<byte>)this);
+        }
     }
 }
