@@ -103,7 +103,7 @@ connecting-update-status-culling-content = Foriganta malnovan enhavon de servilo
 connecting-update-status-committing-download = Konservanta al disko…
 connecting-update-status-unknown = Vi ne devus ĉi tion
 direct-connect-connect = Konekti
-direct-connect-title = Rekta Konekti…
+direct-connect-title = Rekta Konekti
 connecting-privacy-policy-accept = Akcepti (daŭrigi)
 connecting-privacy-policy-decline = Malakcepti (malkonekti)
 hub-settings-button-done = Fini
@@ -165,12 +165,12 @@ filters-rp-high-desc = Alta
 filters-rp-medium = Meza
 filters-rp-medium-desc = Meza
 server-entry-offline = SENKONEKTA
-server-entry-remove-favorite = Forigi Favoraton
-server-entry-add-favorite = Aldoni Favoraton
+server-entry-remove-favorite = Eksfavorati
+server-entry-add-favorite = Favorati
 server-entry-fetching = Leganta…
 tab-home-title = Hejmo
-tab-home-favorite-servers = Favorataj Serviloj:
-tab-home-add-favorite = Aldoni Favoraton…
+tab-home-favorite-servers = Favorataj Serviloj
+tab-home-add-favorite = Aldoni favoraton
 tab-home-refresh = Aktualigi
 tab-options-seasonal-branding = Sezona Markado
 tab-options-title = Opcioj
@@ -266,7 +266,7 @@ tab-options-seasonal-branding-desc = Ajnajn tempe signifajn ikonojn kaj emblemoj
 tab-home-run-content-bundle = Ekruli enhavopakaĵon/ludregistraĵon
 tab-options-open-log-directory = Malfermi dosierujon de registrado
 tab-options-clear-content = Forigi instalitan enhavon de serviloj
-tab-home-direct-connect = Direkte Konekti Al Servilo…
+tab-home-direct-connect = Direkte konekti al servilo
 tab-home-go-to-servers-tab = Iri al la langeto de serviloj
 tab-home-favorites-guide = Marku servilojn kiel favoratojn por facile atingi ĉi tie
 tab-options-log-client-desc = Ebligas registradon de eligaĵo de la ludkliento. Utila por ellaborantoj.
@@ -285,3 +285,19 @@ tab-options-account-settings-desc = Vi povas manaĝi vian agordojn de via konto,
 tab-options-hub-settings-desc = Agordi kiujn servilejojn vi volas uzi por legi la liston de serviloj.
 connecting-status-update-error-no-engine-for-platform = Ĉi tiu ludo uzas malnovan version, kiu ne subtenas vian kurantan platformon. Bonvolu provi alian servilon, aŭ alifoje reprovu.
 connecting-status-update-error-no-module-for-platform = Ĉi tiu ludo bezonas aldonan funkciecon, kiun via kuranta platformo ne subtenas. Bonvolu provi alian servilon, aŭ alifoje reprovu.
+main-window-rosetta-desc =
+    Vi ŝajnas uzi Apple Silicon Mac, kaj vi rulas la ludon kun Rosetta 2. Vi eble spertus pli bonan rendimenton kaj baterian vivdaŭron per rulu la ludon operaciume.
+
+    Por fari tiun, dekstre alklaku la lanĉilon en Finder, elektu "Get Info" kaj malelektu "Open using Rosetta". Poste, restartigu la lanĉilon.
+
+    Ĉu vi intence rulas la ludon kun Rosetta 2, vi povas fermi ĉi tiun mesaĝon, kaj ĝi ne aperos denove. Tamen, ĉu vi faras tiun provcele fliki atentindaĵon, bonvole sendu cimraporton.
+main-window-intel-degrade-desc =
+    La Intel-procesoroj de la 13a kaj 14a generacioj estas konataj degeneri silente kaj permanente, pro mikrokoda cimo en Intel-procesoroj. Bedaŭrinde, ni ne povas detekti, ĉu vi nun estas trafata de ĉi tiu cimo, tial ĉi tiu averto aperas por ĉiuj uzantoj kun ĉi tiuj procesoroj.
+
+    Ni FORTE instigas vin, aktualigu vian ĉeftabulon al la aktuala versio, por certigi la preventon de plua damaĝo. Ĉu vi spertus atentinaĵojn, aŭ nefarus lanĉi la ludo, reduktu la taktofrekvencon de via procesoro por reatingi stabiligecon, kaj uzu vian garantion por peti pri anstataŭigo.
+
+    Ni ne respondecas por ajnaj atentinaĵoj, kiuj povas eliriĝi pro affekciataj procesoroj, krom se vi antaŭzorgis kaj vi certigas ke vian procesoron estas stabila. Ĉi tiu averto ne aperos denove, poste vi akceptos tion.
+main-window-intel-degrade-title = Intel-procesoro de 13a/14a generacio estas detektita.
+main-window-intel-degrade-accept = Mi komprenas, kaj antaŭzorgis.
+main-window-rosetta-title = Vi rulas la ludo kun Rosetta 2!
+main-window-rosetta-accept = Daŭrigi

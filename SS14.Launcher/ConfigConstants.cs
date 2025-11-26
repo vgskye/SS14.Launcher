@@ -5,13 +5,13 @@ namespace SS14.Launcher;
 
 public static class ConfigConstants
 {
-    public const string CurrentLauncherVersion = "55";
+    public const string CurrentLauncherVersion = "58";
     public static readonly bool DoVersionCheck = true;
 
     // Refresh login tokens if they're within <this much> of expiry.
     public static readonly TimeSpan TokenRefreshThreshold = TimeSpan.FromDays(15);
 
-    // If the user leaves the launcher running for absolute ages, this is how often we'll update his login tokens.
+    // If the user leaves the launcher running for absolute ages, this is how often we'll update their login tokens.
     public static readonly TimeSpan TokenRefreshInterval = TimeSpan.FromDays(7);
 
     // The amount of time before a server is considered timed out for status checks.
@@ -66,6 +66,6 @@ public static class ConfigConstants
     {
         var envVarAuthUrl = Environment.GetEnvironmentVariable("SS14_LAUNCHER_OVERRIDE_AUTH");
         if (!string.IsNullOrEmpty(envVarAuthUrl))
-            AuthUrl = new UrlFallbackSet([envVarAuthUrl], AuthUrl.Stats);
+            AuthUrl = new UrlFallbackSet([envVarAuthUrl]);
     }
 }

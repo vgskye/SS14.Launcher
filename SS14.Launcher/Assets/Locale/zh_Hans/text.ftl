@@ -55,7 +55,7 @@ connecting-update-status-loading-content-bundle = 正在载入内容包…
 # Strings for the "connecting" menu that appears when connecting to a server.
 connecting-update-status-unknown = 你不应该看见这个
 # Strings for the "direct connect" dialog window.
-direct-connect-title = 直接连接…
+direct-connect-title = 直接连接
 # Strings for the "direct connect" dialog window.
 direct-connect-text = 输入服务器地址以连接：
 # Strings for the "direct connect" dialog window.
@@ -378,13 +378,13 @@ tab-development-enable-engine-override = 启用引擎覆盖
 # Strings for the "home" tab
 tab-home-title = 首页
 # Strings for the "home" tab
-tab-home-favorite-servers = 收藏服务器：
+tab-home-favorite-servers = 收藏服务器
 # Strings for the "home" tab
-tab-home-add-favorite = 添加到收藏…
+tab-home-add-favorite = 添加到收藏
 # Strings for the "home" tab
 tab-home-refresh = 刷新
 # Strings for the "home" tab
-tab-home-direct-connect = 直接连接到服务器…
+tab-home-direct-connect = 直接连接到服务器
 # Strings for the "home" tab
 tab-home-run-content-bundle = 运行内容包或回放
 # Strings for the "home" tab
@@ -547,3 +547,5 @@ server-entry-round-time =
 connecting-status-update-error-unknown = 未知
 tab-servers-table-round-time = 时间
 server-entry-status-lobby = 大厅
+connecting-status-update-error-no-engine-for-platform = 本游戏正在使用较老的版本，并且不支持你当前的平台。请尝试连接至其它服务器，或稍后再试。
+connecting-status-update-error-no-module-for-platform = 本游戏要求支持额外功能，并且不支持你当前的平台。请尝试连接至其它服务器，或稍后再试。

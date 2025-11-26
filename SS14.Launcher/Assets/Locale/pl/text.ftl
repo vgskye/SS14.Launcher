@@ -32,7 +32,7 @@ connecting-update-status-loading-content-bundle = Wczytywanie pliku danych…
 # Strings for the "connecting" menu that appears when connecting to a server.
 connecting-update-status-unknown = Nie powinieneś tego widzieć
 # Strings for the "direct connect" dialog window.
-direct-connect-title = Łączenie bezpośrednie…
+direct-connect-title = Łączenie Bezpośrednie
 # Strings for the "direct connect" dialog window.
 direct-connect-text = Podaj adres serwera by połączyć:
 # Strings for the "direct connect" dialog window.
@@ -198,7 +198,7 @@ filters-rp-high-desc = Wysoki
 # Strings for the "home" tab
 tab-home-refresh = Odśwież
 # Strings for the "home" tab
-tab-home-add-favorite = Dodaj ulubiony…
+tab-home-add-favorite = Dodaj ulubiony
 # Strings for entries in the server list (including home page)
 server-entry-raise = Przenieś na górę listy
 # Strings for the "options" tab
@@ -227,7 +227,7 @@ tab-options-compatibility-mode = Tryb kompatybilności
 # Strings for the "options" tab
 tab-options-account-settings-desc = Możesz zarządzać ustawieniami swojego konta, takimi jak zmiana adresu e–mail lub hasła, za pośrednictwem naszej strony internetowej.
 # Strings for the "home" tab
-tab-home-direct-connect = Bezpośrednie połączenie z serwerem…
+tab-home-direct-connect = Bezpośrednie połączenie z serwerem
 # Strings for the "options" tab
 tab-options-clear-content = Wyczyść zainstalowaną zawartość serwerów
 # Strings for the "options" tab
@@ -369,7 +369,7 @@ server-entry-description-fetching = Pobieranie statusu serwera…
 # Short region names for server tag filters (shown in filter check box)
 region-short-europe-west = Europa Zachodnia
 # Strings for the "home" tab
-tab-home-favorite-servers = Ulubione serwery:
+tab-home-favorite-servers = Ulubione Serwery
 # Strings for the "home" tab
 tab-home-title = Strona główna
 # Strings for the "Development" tab
@@ -548,3 +548,5 @@ connecting-privacy-policy-text-version-changed = Ten serwer zaktualizował swoj�
 connecting-privacy-policy-view = Pokaż politykę prywatności
 connecting-privacy-policy-accept = Zaakceptuj (kontynuuj)
 connecting-privacy-policy-decline = Odmów (odłącz)
+connecting-status-update-error-no-engine-for-platform = Ta gra używa starszej wersji, która nie wspira twojej platformy. Spróbuj ponownie później lub połącz się z innym serwerem.
+connecting-status-update-error-no-module-for-platform = Ta gra wymaga dodatkowej funkcjonalności, która nie jest wspierana na twojej platformie. Spróbuj ponownie później lub połącz się z innym serwerem.

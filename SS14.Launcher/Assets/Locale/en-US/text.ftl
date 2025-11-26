@@ -63,7 +63,7 @@ connecting-privacy-policy-decline = Decline (disconnect)
 
 ## Strings for the "direct connect" dialog window.
 
-direct-connect-title = Direct Connect…
+direct-connect-title = Direct Connect
 direct-connect-text = Enter server address to connect:
 direct-connect-connect = Connect
 direct-connect-address-invalid = Address is invalid
@@ -169,6 +169,22 @@ main-window-out-of-date-download-manual = Download (manual)
 main-window-early-access-title = Heads up!
 main-window-early-access-desc = Space Station 14 is still very much in alpha. We hope you like what you see, and maybe even stick around, but make sure to keep your expectations modest for the time being.
 main-window-early-access-accept = Got it!
+main-window-intel-degrade-title = Intel 13th/14th Generation CPU detected.
+main-window-intel-degrade-desc =
+    The Intel 13th/14th generation CPUs are known to silently degrade permanently and die due to a microcode bug by Intel. We sadly can't tell if you are currently affected by this bug, so this warning appears for all users with these CPUs.
+
+    We STRONGLY encourage you to update your motherboard's BIOS to the latest version to ensure prevention of further damage. If you are having stability issues/failing to start the game, downclock your CPU to get it stable again and use your warranty to ask about getting it replaced.
+
+    We are not responsible to help with any issues that may arise from affected processors, unless you took the precautions and are sure your CPU is stable. This message will not appear again after you accept it.
+main-window-intel-degrade-accept = I understand and have taken the necessary precautions.
+main-window-rosetta-title = You are running the game using Rosetta 2!
+main-window-rosetta-desc =
+    You seem to be on an Apple Silicon Mac and are running the game using Rosetta 2. You may enjoy better performance and battery life by running the game natively.
+
+    To do this, right click the launcher in Finder, select "Get Info" and uncheck "Open using Rosetta". After that, restart the launcher.
+
+    If you are intentionally running the game using Rosetta 2, you can dismiss this message and it will not appear again. Although if you are doing this in an attempt to fix a problem, please make a bug report.
+main-window-rosetta-accept = Continue
 main-window-drag-drop-prompt = Drop to run game
 main-window-busy-checking-update = Checking for launcher update…
 main-window-busy-checking-login-status = Refreshing login status…
@@ -277,8 +293,8 @@ filters-rp-high-desc = High
 ## Strings for entries in the server list (including home page)
 
 server-entry-connect = Connect
-server-entry-add-favorite = Add Favorite
-server-entry-remove-favorite = Remove Favorite
+server-entry-add-favorite = Favorite
+server-entry-remove-favorite = Unfavorite
 server-entry-offline = OFFLINE
 server-entry-player-count =
     { $players } / { $max ->
@@ -311,10 +327,10 @@ tab-development-enable-engine-override-desc = Override path to load engine zips 
 ## Strings for the "home" tab
 
 tab-home-title = Home
-tab-home-favorite-servers = Favorite Servers:
-tab-home-add-favorite = Add Favorite…
+tab-home-favorite-servers = Favorite Servers
+tab-home-add-favorite = Add favorite
 tab-home-refresh = Refresh
-tab-home-direct-connect = Direct Connect To Server…
+tab-home-direct-connect = Direct connect to server
 tab-home-run-content-bundle = Run content bundle/replay
 tab-home-go-to-servers-tab = Go to the servers tab
 tab-home-favorites-guide = Mark servers as favorite for easy access here
