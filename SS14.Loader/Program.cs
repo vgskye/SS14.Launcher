@@ -66,9 +66,11 @@ internal class Program
         var redialApi = launcher != null ? new RedialApi(launcher) : null;
         var contentDb = Environment.GetEnvironmentVariable("SS14_LOADER_CONTENT_DB");
         var contentVersion = Environment.GetEnvironmentVariable("SS14_LOADER_CONTENT_VERSION");
+        var overlayZip = Environment.GetEnvironmentVariable("SS14_LOADER_OVERLAY_ZIP");
         var contentDataDb = Environment.GetEnvironmentVariable("SS14_LOADER_CONTENT_DATA_DB");
         var contentManifestHash = Environment.GetEnvironmentVariable("SS14_LOADER_CONTENT_MANIFEST_HASH");
         IDisposableFileApi? contentApi = null;
+        ZipFileApi? overlayApi = null;
         IEnumerable<ApiMount>? extraMounts = null;
         if (!string.IsNullOrEmpty(contentDataDb) && !string.IsNullOrEmpty(contentManifestHash))
         {
@@ -80,6 +82,17 @@ internal class Program
             extraMounts = new[] { new ApiMount(contentApi, "/") };
         }
 
+        if (!string.IsNullOrEmpty(overlayZip))
+        {
+            var overlayArchive = new ZipArchive(
+                File.OpenRead(overlayZip),
+                ZipArchiveMode.Read);
+
+            overlayApi = new ZipFileApi(overlayArchive, "");
+            // Put this *before* the game's regular installation so it masks files.
+            extraMounts = [new ApiMount(overlayApi, "/"), ..extraMounts ?? []];
+        }
+
         var args = new MainArgs(_engineArgs, _fileApi, redialApi, extraMounts);
 
         try
@@ -89,6 +102,7 @@ internal class Program
         finally
         {
             contentApi?.Dispose();
+            overlayApi?.Dispose();
         }
         return true;
     }

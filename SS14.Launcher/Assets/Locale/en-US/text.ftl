@@ -347,6 +347,7 @@ tab-options-title = Options
 tab-options-flip = { "*" }flip
 tab-options-clear-engines = Clear installed engines
 tab-options-clear-content = Clear installed server content
+tab-options-clear-content-close-client = Close running clients first
 tab-options-open-log-directory = Open log directory
 tab-options-account-settings = Account Settings
 tab-options-account-settings-desc = You can manage your account settings, such as changing email or password, through our website.
@@ -378,3 +379,8 @@ language-selector-help-translate = Want to help translate? You can!
 language-selector-system-language = System language ({ $languageName })
 # Used for contents of each language button.
 language-selector-language = { $languageName } ({ $englishName })
+
+## Miscellaneous
+
+# Generic "Done!" message used for some buttons.
+button-done = Done!
